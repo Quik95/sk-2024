@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <cjson/cJSON.h>
-#include <time.h>
 #include "connection.h"
 #include "common.h"
 #include "game.h"
@@ -27,7 +26,6 @@ enum MESSAGE_TYPE_IN {
     GAME_STATE_REQUEST,
     MOVE_PIECE,
     DISCONNECT,
-    HEARTBEAT,
     EXIT_SERVER = 42069
 };
 
@@ -88,7 +86,7 @@ char* readfull_body(int descriptor, char* buffer, int sizetoread) {
 
 void handle_join_game(int conn_fd, cJSON* message) {
     char* game_id = malloc(sizeof(char) * 6);
-    if (extract_string(message, "gameId", game_id) < 0) {
+    if (extract_string(message, "game_id", game_id) < 0) {
         printf("error parsing game_id\n");
         exit(1);
     }
@@ -154,17 +152,6 @@ void handle_sync_state(int conn_fd, cJSON* root) {
 
     if (g->winner != -1) {
         send_game_ended(conn_fd, g);
-        return;
-    }
-
-    if ((g->players[0] != nullptr && g->players[0]->disconnected) || (g->players[1] != nullptr &&  g->players[1]->disconnected)) {
-        cJSON *resp = cJSON_CreateObject();
-        prepare_json(PLAYER_DISCONNECTED, game_id, player_id);
-        char* marshalled = cJSON_Print(resp);
-        write_http_response(conn_fd, marshalled);
-
-        cJSON_Delete(resp);
-        cJSON_free(marshalled);
         return;
     }
 
@@ -273,7 +260,8 @@ void handle_move_piece(int conn_fd, cJSON* root) {
 
 int extract_string(cJSON* root, char* key, char* value) {
     cJSON* json = cJSON_GetObjectItem(root, key);
-    if (json == nullptr || json->valuestring == nullptr) {
+    if (json == NULL) {
+        printf("error parsing %s\n", key);
         return -1;
     }
     strcpy(value, json->valuestring);
@@ -365,28 +353,7 @@ void handle_connection(int conn_fd) {
         exit(1);
     }
 
-    char game_id[6] = {0};
-    if (extract_string(root, "gameId", game_id) < 0) {
-        goto sw;
-    }
-    mtx_lock(&boards_mutex);
-    GameStatus* g = find_game(game_id);
-    if (g == nullptr) {
-        goto sw;
-    }
-
-    char player_id[6] = {0};
-    if (extract_string(root, "playerId", player_id) < 0) {
-        goto sw;
-    }
-
-    Player* p = find_player(g, player_id);
-    if (p == nullptr) {
-        goto sw;
-    }
-    p->last_heartbeat = time(NULL);
-
-    sw:    switch (message_type->valueint) {
+    switch (message_type->valueint) {
         case JOIN_GAME:
             handle_join_game(conn_fd, root);
             break;
@@ -406,7 +373,6 @@ void handle_connection(int conn_fd) {
             printf("unknown message type: %d\n", message_type->valueint);
             exit(1);
     }
-    mtx_unlock(&boards_mutex);
 
     cJSON_Delete(root);
 

@@ -6,13 +6,11 @@
 #define SERVER_GAME_H
 
 #include <cjson/cJSON.h>
-#include <threads.h>
 
 typedef struct {
     char playerId[6];
     int color;
     bool disconnected;
-    long last_heartbeat;
 } Player;
 
 typedef struct {
@@ -31,8 +29,5 @@ Player* find_player(GameStatus* gameStatus, char* playerId);
 bool is_move_valid(GameStatus* gameStatus, int fromX, int fromY, int toX, int toY);
 void serialize_board(cJSON* root, int gameBoard[8][8]);
 void free_game(GameStatus* gameStatus);
-void init_player(Player* p);
-int check_for_disconnected_players(void* arg);
-static mtx_t boards_mutex;
 
 #endif //SERVER_GAME_H

@@ -24,14 +24,13 @@ export enum InBoundMessageType {
     GAME_STATE_SYNC,
     MOVE_ACCEPTED,
     GAME_ENDED,
-    PLAYER_DISCONNECTED
 }
 
 export enum OutBoundMessageType {
     JOIN_GAME = 128,
     GAME_STATE_SYNC,
     MOVE_PIECE,
-    DISCONNECT,
+    DISCONNECT
 }
 
 export type ServerResponse = {
@@ -79,7 +78,7 @@ type GameJoinResponse = {
 async function connectToGame(gameId: string) {
     console.log(`Game ID: ${gameId}`)
     try {
-        const resp = await sendServerRequest<GameJoinResponse>(OutBoundMessageType.JOIN_GAME, {gameId: gameId})
+        const resp = await sendServerRequest<GameJoinResponse>(OutBoundMessageType.JOIN_GAME, {game_id: gameId})
         gameID = resp.gameId
         playerID = resp.playerId
         gameStatePollIntervalId = setInterval(pollForGameState, 1000)
@@ -119,8 +118,6 @@ type GameStateSyncResponse = {
     messageType: InBoundMessageType.GAME_ENDED,
     winner: ChessPieceColor,
     board: number[][]
-} | {
-    messageType: InBoundMessageType.PLAYER_DISCONNECTED,
 }
 
 export function sendServerRequest<T>(msgType: OutBoundMessageType, data?: object): Promise<ServerResponse & T> {
@@ -148,11 +145,6 @@ async function pollForGameState() {
         if (resp.messageType == InBoundMessageType.GAME_ENDED) {
             gameboard?.synchronizeBoardState(resp.board)
             gameEndedHandler(resp.winner)
-            return
-        }
-
-        if (resp.messageType == InBoundMessageType.PLAYER_DISCONNECTED) {
-            opponentDisconnectedHandler()
             return
         }
 
@@ -188,20 +180,6 @@ export function gameEndedHandler(winner: ChessPieceColor) {
     colorTurnHTML.innerText = winner == ChessPieceColor.WHITE
     ? "White has won!!!"
         : "Black has won!!!"
-
-    sendServerRequest<{}>(OutBoundMessageType.DISCONNECT)
-}
-
-function opponentDisconnectedHandler() {
-    gameStatePollIntervalId && clearInterval(gameStatePollIntervalId)
-    gameboard?.disableInteractivity()
-    gameboard = null
-
-    const colorTurnHTML = document.getElementById("colorTurn") as HTMLElement
-    colorTurnHTML.classList.remove("black-turn")
-    colorTurnHTML.classList.remove("white-turn")
-    colorTurnHTML.classList.add("black-turn")
-    colorTurnHTML.innerText = "Opponent disconnected"
 
     sendServerRequest<{}>(OutBoundMessageType.DISCONNECT)
 }

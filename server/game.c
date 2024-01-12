@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 #include "game.h"
 #include "chess_rules.h"
 #include "common.h"
@@ -167,10 +165,11 @@ GameStatus* create_or_join_game(char* gameId) {
     // game exists, add a player
     if (gameStatus != NULL && gameStatus->players[1] == NULL) {
         Player* p = malloc(sizeof(Player));
-        init_player(p);
+        assert(gameStatus->players[0]->color == WHITE);
+        bzero(p->playerId, 6);
         sprintf(p->playerId, "%d", rand() % 1024);
         p->color = BLACK;
-
+        p->disconnected = false;
         gameStatus->players[1] = p;
         return gameStatus;
     }
@@ -182,10 +181,10 @@ GameStatus* create_or_join_game(char* gameId) {
 
     //game does not exist, create a new one
     Player* p = malloc(sizeof(Player));
-    init_player(p);
+    bzero(p->playerId, 6);
     sprintf(p->playerId, "%d", rand() % 1024);
     p->color = WHITE;
-
+    p->disconnected = false;
     return init_game(gameId, p);
 }
 
@@ -266,37 +265,3 @@ void free_game(GameStatus* gameStatus) {
     free(gameStatus->gameId);
     free(gameStatus);
 }
-
-void init_player(Player* p) {
-    bzero(p->playerId, 6);
-    p->color = -1;
-    p->disconnected = false;
-    p->last_heartbeat = time(nullptr);
-}
-
-int check_for_disconnected_players(void* arg) {
-    for(;;) {
-        mtx_lock(&boards_mutex);
-        for (int i =0; i < MAX_GAMES; i++) {
-            GameStatus *gs = games[i];
-            if (gs == nullptr)
-                continue;
-
-            for (int j = 0; j < 2; j++) {
-                Player *p = gs->players[j];
-                if (p == nullptr)
-                    continue;
-
-                if (!p->disconnected && time(nullptr) - p->last_heartbeat > 5) {
-                    printf("Player %s has been disconnected for too long\n", p->playerId);
-                    p->disconnected = true;
-                    break;
-                }
-            }
-        }
-        mtx_unlock(&boards_mutex);
-        thrd_sleep(&(struct timespec){.tv_sec = 3}, nullptr);
-    }
-    thrd_exit(0);
-}
-

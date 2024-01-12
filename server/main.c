@@ -3,10 +3,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
 #include <cjson/cJSON.h>
-
+#include "common.h"
 #include "connection.h"
-#include "game.h"
 
 #define LISTEN_PORT 2137
 
@@ -26,15 +27,6 @@ int main() {
     listen(sockfd, 5);
 
     printf("Starting accepting requests...\n");
-
-    mtx_init(&boards_mutex, mtx_plain);
-    thrd_t disconnect_thread;
-    int rc = thrd_create(&disconnect_thread, check_for_disconnected_players, NULL);
-    if (rc != thrd_success) {
-        perror("Failed to create thread");
-        return 1;
-    }
-    thrd_detach(disconnect_thread);
 
     for (;;) {
         struct sockaddr_in client_sockaddr_in;
