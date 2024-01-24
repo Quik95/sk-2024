@@ -24,6 +24,8 @@ export enum InBoundMessageType {
     GAME_STATE_SYNC,
     MOVE_ACCEPTED,
     GAME_ENDED,
+    PLAYER_DISCONNECTED,
+    OPPONENT_DISCONNECTED,
 }
 
 export enum OutBoundMessageType {
@@ -118,6 +120,8 @@ type GameStateSyncResponse = {
     messageType: InBoundMessageType.GAME_ENDED,
     winner: ChessPieceColor,
     board: number[][]
+} | {
+    messageType: InBoundMessageType.OPPONENT_DISCONNECTED,
 }
 
 export function sendServerRequest<T>(msgType: OutBoundMessageType, data?: object): Promise<ServerResponse & T> {
@@ -145,6 +149,11 @@ async function pollForGameState() {
         if (resp.messageType == InBoundMessageType.GAME_ENDED) {
             gameboard?.synchronizeBoardState(resp.board)
             gameEndedHandler(resp.winner)
+            return
+        }
+
+        if (resp.messageType == InBoundMessageType.OPPONENT_DISCONNECTED) {
+            opponentDisconnectedHandler()
             return
         }
 
@@ -182,6 +191,18 @@ export function gameEndedHandler(winner: ChessPieceColor) {
         : "Black has won!!!"
 
     sendServerRequest<{}>(OutBoundMessageType.DISCONNECT)
+}
+
+function opponentDisconnectedHandler() {
+gameStatePollIntervalId && clearInterval(gameStatePollIntervalId)
+    gameboard?.disableInteractivity()
+    gameboard = null
+
+    const colorTurnHTML = document.getElementById("colorTurn") as HTMLElement
+    colorTurnHTML.classList.remove("black-turn")
+    colorTurnHTML.classList.remove("white-turn")
+    colorTurnHTML.classList.add("black-turn")
+    colorTurnHTML.innerText = "Opponent disconnected"
 }
 
 showGameSelectPage()
