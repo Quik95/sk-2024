@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <cjson/cJSON.h>
+#include <time.h>
+#include <threads.h>
 #include "connection.h"
 #include "common.h"
 #include "game.h"
@@ -19,6 +21,7 @@ enum MESSAGE_TYPE_OUT {
     MOVE_ACCEPTED,
     GAME_ENDED,
     PLAYER_DISCONNECTED,
+    OPPONENT_DISCONNECTED
 };
 
 enum MESSAGE_TYPE_IN {
@@ -48,6 +51,7 @@ static void handle_sync_state(int conn_fd, cJSON* root);
 static void handle_move_piece(int conn_fd, cJSON* root);
 static void send_game_ended(int conn_fd, GameStatus* g);
 static void handle_disconnect(int conn_fd, cJSON* root);
+static void send_opponent_disconnected(int conn_fd, GameStatus* g);
 
 ssize_t readfull_header(int descriptor, char* buffer, int sizetoread) {
     ssize_t offset = 0;
@@ -155,6 +159,16 @@ void handle_sync_state(int conn_fd, cJSON* root) {
         return;
     }
 
+    Player* p = find_player(g, player_id);
+    p->lastHeartbeat = time(NULL);
+
+    Player* other = get_the_other_player(g, p);
+    if (other != NULL && other->disconnected) {
+        send_opponent_disconnected(conn_fd, g);
+        printf("Discovered disconnected opponent, sending message\n");
+        return;
+    }
+
     if (g->players[0] == nullptr || g->players[1] == nullptr) {
         cJSON* resp = cJSON_CreateObject();
         cJSON_AddNumberToObject(resp, "messageType", WAIT_FOR_OTHER_PLAYER);
@@ -175,7 +189,6 @@ void handle_sync_state(int conn_fd, cJSON* root) {
     cJSON_AddStringToObject(resp, "playerId", player_id);
     cJSON_AddNumberToObject(resp, "currentTurn", g->currentTurn);
 
-    Player* p = find_player(g, player_id);
     cJSON_AddNumberToObject(resp, "playerColor", p->color);
 
     serialize_board(resp, g->board);
@@ -206,6 +219,7 @@ void handle_move_piece(int conn_fd, cJSON* root) {
     }
 
     Player* p = find_player(g, player_id);
+    p->lastHeartbeat = time(NULL);
     if (p->color != g->currentTurn) {
         printf("wrong player turn\n");
         return;
@@ -225,7 +239,6 @@ void handle_move_piece(int conn_fd, cJSON* root) {
         cJSON *resp = prepare_json(GAME_STATE_RESPONSE, game_id, player_id);
 
         serialize_board(resp, g->board);
-        Player* p = find_player(g, player_id);
         cJSON_AddNumberToObject(resp, "playerColor", p->color);
         cJSON_AddNumberToObject(resp, "currentTurn", g->currentTurn);
 
@@ -322,6 +335,15 @@ void handle_disconnect(int conn_fd, cJSON* root) {
     cJSON_free(marshalled);
 }
 
+void send_opponent_disconnected(int conn_fd, GameStatus* g) {
+    cJSON* resp = prepare_json(OPPONENT_DISCONNECTED, g->gameId, g->players[0]->playerId);
+    char* marshalled = cJSON_Print(resp);
+    write_http_response(conn_fd, marshalled);
+
+    cJSON_Delete(resp);
+    cJSON_free(marshalled);
+}
+
 void handle_connection(int conn_fd) {
     char buffer[MAX_MESSAGE_LENGTH] = {0};
     printf("Accepted connection.\n");
@@ -373,6 +395,8 @@ void handle_connection(int conn_fd) {
             printf("unknown message type: %d\n", message_type->valueint);
             exit(1);
     }
+
+    mark_disconnected_players();
 
     cJSON_Delete(root);
 

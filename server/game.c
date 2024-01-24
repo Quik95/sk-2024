@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+#include <threads.h>
 #include "game.h"
 #include "chess_rules.h"
 #include "common.h"
@@ -170,6 +172,7 @@ GameStatus* create_or_join_game(char* gameId) {
         sprintf(p->playerId, "%d", rand() % 1024);
         p->color = BLACK;
         p->disconnected = false;
+        p->lastHeartbeat = time(NULL);
         gameStatus->players[1] = p;
         return gameStatus;
     }
@@ -185,6 +188,7 @@ GameStatus* create_or_join_game(char* gameId) {
     sprintf(p->playerId, "%d", rand() % 1024);
     p->color = WHITE;
     p->disconnected = false;
+    p->lastHeartbeat = time(NULL);
     return init_game(gameId, p);
 }
 
@@ -264,4 +268,22 @@ void free_game(GameStatus* gameStatus) {
     free(gameStatus->players[1]);
     free(gameStatus->gameId);
     free(gameStatus);
+}
+
+void mark_disconnected_players() {
+    for (int i = 0; i < MAX_GAMES; i++) {
+        if (games[i] != NULL) {
+            for (int j = 0; j < 2; j++) {
+                if (games[i]->players[j] != NULL) {
+                    if (time(NULL) - games[i]->players[j]->lastHeartbeat > 5) {
+                        games[i]->players[j]->disconnected = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+Player* get_the_other_player(GameStatus* g, Player* currentPlayer) {
+    return g->players[0] == currentPlayer ? g->players[1] : g->players[0];
 }

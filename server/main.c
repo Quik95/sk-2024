@@ -6,8 +6,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <cjson/cJSON.h>
+
 #include "common.h"
 #include "connection.h"
+#include "game.h"
 
 #define LISTEN_PORT 2137
 
